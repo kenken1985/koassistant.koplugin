@@ -86,6 +86,14 @@ function CustomOpenAIHandler:customizeRequestBody(body, config)
             body.temperature = 1.0
         end
     end
+
+    -- Structured output (response_format): passed via api_params.response_format
+    local rf = config.api_params and config.api_params.response_format
+    if rf then
+        if type(rf) == "function" then rf = rf(config) end
+        body.response_format = rf
+    end
+
     return body
 end
 

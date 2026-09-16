@@ -1493,6 +1493,7 @@ CRITICAL: This must cover only content up to {reading_progress}. Output ONLY val
         api_params = {
             temperature = 0.5,
             max_tokens = 65536,  -- X-Ray JSON can be large; Sonnet 4.5 max is 64000
+            response_format = { type = "json_object" },
         },
         builtin = true,
         no_duplicate = true,  -- JSON output requires X-Ray browser; duplicates would produce unusable raw JSON in chat
