@@ -716,6 +716,20 @@ function XrayParser.parse(text)
         end
     end
 
+    -- Attempt 6: Ask LLM as a last resort for severely malformed responses
+    local llm_repaired = JsonRepair.askLLM(candidate)
+    if llm_repaired then
+        ok, data = pcall(json.decode, llm_repaired)
+        if not (ok and isValidXrayData(data)) then
+            ok, data = pcall(json.decode, JsonRepair.escapeInnerQuotes(llm_repaired))
+        end
+        if ok and isValidXrayData(data) then
+            logger.dbg("XrayParser: parsed via askLLM repair")
+            normalizeShapes(data)
+            return data, nil
+        end
+    end
+
     return nil, decode_err or "failed to parse JSON from response"
 end
 

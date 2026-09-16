@@ -169,4 +169,70 @@ function JsonRepair.closeUnclosed(text)
     return trimmed .. table.concat(closers)
 end
 
+--- Ask the current configured provider to repair malformed JSON.
+--- The parsers can run well after their original request has completed, so load
+--- the current configuration from KOAssistant's settings instead of requiring
+--- each parser (and every cache consumer) to carry a config table through.
+--- @param text string
+--- @return string|nil
+function JsonRepair.askLLM(text)
+    if type(text) ~= "string" or text == "" then return nil end
+    local GPTQuery = require("koassistant_gpt_query")
+    local LuaSettings = require("luasettings")
+    local DataStorage = require("datastorage")
+    local settings = LuaSettings:open(DataStorage:getSettingsDir() .. "/koassistant_settings.lua")
+    local features = settings:readSetting("features") or {}
+    local config = {
+        -- The settings UI stores the active choice in features. Top-level values
+        -- remain as the compatibility fallback used during initial setup.
+        provider = features.provider or settings:readSetting("provider"),
+        model = features.model or settings:readSetting("model"),
+        features = features,
+    }
+
+    local messages = {
+        {
+            role = "system",
+            text = "You are a precise JSON repair engine. Your only task is to fix syntax errors, unescaped quotes, trailing commas, or missing brackets/braces in the provided text so that it parses as valid JSON. Return ONLY the valid JSON object or array. Do NOT wrap it in markdown code blocks (such as ```json), do NOT include any introductory or explanatory text."
+        },
+        {
+            role = "user",
+            text = "Please fix this invalid JSON:\n\n" .. text
+        }
+    }
+
+    -- Clone config and strip streaming/background flags for a synchronous query
+    local repair_config = {}
+    if config then
+        for k, v in pairs(config) do repair_config[k] = v end
+    end
+    repair_config.features = {}
+    if config and config.features then
+        for k, v in pairs(config.features) do repair_config.features[k] = v end
+    end
+    repair_config.features._suppress_loading_dialog = true
+    repair_config.features.hidden_streaming = true
+
+    local repaired_content = nil
+    local success = false
+
+    -- Perform synchronous/blocking query for the fix
+    -- Pass settings too: GPTQuery resolves GUI API keys and custom providers
+    -- from it, just as the normal request paths do.
+    GPTQuery.query(messages, repair_config, function(ok, content, err)
+        if ok and content then
+            success = true
+            repaired_content = content
+        end
+    end, settings)
+
+    if not success or not repaired_content then
+        return nil
+    end
+
+    -- Strip potential markdown code fences if the model included them despite instructions
+    local cleaned = repaired_content:gsub("^%s*```[%w]*%s*(.-)%s*```%s*$", "%1")
+    return cleaned
+end
+
 return JsonRepair

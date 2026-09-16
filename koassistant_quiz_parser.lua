@@ -321,6 +321,17 @@ function QuizParser.parse(text)
         end
     end
 
+    -- Attempt 5: Ask LLM as a last resort if deterministic repairs failed.
+    -- askLLM reads the active configuration itself.
+    local llm_repaired = JsonRepair.askLLM(candidate)
+    if llm_repaired then
+        data = tryDecode(llm_repaired) or tryDecode(JsonRepair.escapeInnerQuotes(llm_repaired))
+        if data then
+            logger.dbg("QuizParser: parsed via askLLM repair")
+            return normalizeQuiz(data), nil
+        end
+    end
+
     -- Attempt 4: markdown fallback
     data = parseMarkdown(text)
     if data then
